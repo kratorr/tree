@@ -3,10 +3,13 @@ package main
 import (
 	"fmt"
 	"io"
+	"io/fs"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sort"
+
+	"github.com/fatih/color"
 )
 
 func removeFilesFromList(files []os.FileInfo) []os.FileInfo {
@@ -31,9 +34,25 @@ func formatSize(file os.FileInfo) string {
 	return size_str
 }
 
+func isExecutable(mode fs.FileMode) bool {
+	modeString := mode.String()
+	for _, access := range modeString {
+		if access == 'x' {
+			return true
+		}
+	}
+	return false
+}
+
 func printLevel(out io.Writer, path string, prepre string, prefix string, printfile bool) {
-	file, _ := os.Open(path)
-	files, _ := ioutil.ReadDir(file.Name())
+	file, err := os.Open(path)
+	if err != nil {
+		fmt.Println(err)
+	}
+	files, err := ioutil.ReadDir(file.Name())
+	if err != nil {
+		fmt.Println(err)
+	}
 	sort.Slice(files, func(i, j int) bool { return files[i].Name() < files[j].Name() })
 
 	var end string
@@ -54,12 +73,18 @@ func printLevel(out io.Writer, path string, prepre string, prefix string, printf
 		}
 		if current_file.IsDir() == false {
 			size_str := formatSize(current_file)
-			fmt.Fprintln(out, prefix+end+current_file.Name(), size_str)
+			if isExecutable(current_file.Mode().Perm()) {
+				blue := color.New(color.FgGreen).SprintFunc()
+				line := prefix + end + blue(current_file.Name())
+				fmt.Fprintln(out, line)
+			} else {
+				fmt.Fprintln(out, prefix+end+current_file.Name(), size_str)
+			}
+
 		} else {
-			//blue := color.New(color.FgBlue).SprintFunc()
-			fmt.Fprintln(out, prefix+end+current_file.Name())
-			//line := prefix + end + blue(current_file.Name())
-			//fmt.Fprintln(out, line)
+			blue := color.New(color.FgBlue).SprintFunc()
+			line := prefix + end + blue(current_file.Name())
+			fmt.Fprintln(out, line)
 		}
 
 		var prepre string
@@ -71,9 +96,7 @@ func printLevel(out io.Writer, path string, prepre string, prefix string, printf
 			}
 			printLevel(out, filepath.Join(file.Name(), current_file.Name()), prepre, prefix, printfile)
 		}
-
 	}
-
 }
 
 func dirTree(out io.Writer, path string, printFile bool) error {
